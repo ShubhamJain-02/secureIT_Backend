@@ -3,6 +3,7 @@ import {PORT,mongoDBURL} from "./config.js";
 import mongoose from "mongoose";
 import router from "./routes/AssetRoutes.js";
 import router2 from "./routes/VulRoutes.js";
+import router3 from "./routes/OrgRoutes.js";
 import { asset } from "./assetModel.js";
 import cors from 'cors';
 const app=express();
@@ -15,6 +16,7 @@ app.get('/',(request,response)=>{
 });
 app.use('/asset',router);
 app.use('/vul',router2);
+app.use('/org',router3);
 
 // app.use(cors({
 //     origin:'http://localhost:3000',

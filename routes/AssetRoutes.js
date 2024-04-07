@@ -3,6 +3,8 @@ import multer from 'multer';
 import xlsx from 'xlsx';
 import { asset } from "../assetModel.js";
 import { vul } from "../vulModel.js";
+
+
 const router=express.Router();
 //asset creation
 const determineRiskLevel = (value) => {
@@ -13,24 +15,48 @@ const determineRiskLevel = (value) => {
     } else if (value >= 18 && value <= 27) {
       return 3;
     }
-    return 0; // Default value if none of the conditions are met
+    return 0; 
   };
-router.post("/", async (request, response) => {
+  router.post("/", async (request, response) => {
     try {
-        const scaledValue = request.body.conf*request.body.avail*request.body.avail;
+        const scaledValue = request.body.conf * request.body.avail * request.body.avail;
         const riskLevel = determineRiskLevel(scaledValue);
-        const allVulnerabilities = await vul.find({});
-        const mappedVulnerabilities = allVulnerabilities.map(vulnerability => ({
-            risk_scenario: vulnerability.risk_scenario,
-            threat: vulnerability.threat,
-            vul: vulnerability.vul,
-            access: vulnerability.access,
-            actor: vulnerability.actor,
-            motive: vulnerability.motive,
-            impact: riskLevel,
-            likelihood: vulnerability.likelihood,
-            inh_risk: riskLevel*vulnerability.likelihood,
-        }));
+        const storLocFilter = request.body.stor_loc === 'cloud' ? 'Tech' : ['Tech', 'Physical'];
+
+        const allVulnerabilities = await vul.find({ org: { $in: storLocFilter } });
+        const mappedVulnerabilities = allVulnerabilities.map(vulnerability => {
+          const _id = vulnerability._id;
+          return{
+            _id,
+            org: vulnerability.org,
+            control_num: vulnerability.control_num,
+            sec_name: vulnerability.sec_name,
+            con_type: vulnerability.con_type,
+            isp: vulnerability.isp,
+            cyb_con: vulnerability.cyb_con,
+            op_cab: vulnerability.op_cab,
+            sec_dom: vulnerability.sec_dom,
+            control: vulnerability.control,
+            purpose: vulnerability.purpose,
+            mat_level: vulnerability.mat_level,
+            mat_ob: vulnerability.mat_ob,
+            com: vulnerability.com,
+            iso_control: vulnerability.iso_control.map(control => {
+              const _id=control._id;
+                return{
+                  _id,
+                  risk_scenario: control.risk_scenario,
+                threat: control.threat,
+                vul: control.vul,
+                access: control.access,
+                actor: control.actor,
+                motive: control.motive,
+                impact: riskLevel,
+                likelihood: control.likelihood,
+                inh_risk: riskLevel * control.likelihood,
+          }}),
+        }});
+
         const newAsset = {
             department: request.body.department,
             info_asset: request.body.info_asset,
@@ -47,14 +73,14 @@ router.post("/", async (request, response) => {
             shared_with: request.body.shared_with,
             vulnerabilities: mappedVulnerabilities,
         };
+
         const create_asset = await asset.create(newAsset);
         return response.status(201).send(create_asset);
-    }
-    catch (error) {
+    } catch (error) {
         console.log(error.message);
-        response.status(500).send({ message: error.message })
+        response.status(500).send({ message: error.message });
     }
-})
+});
 
 //displaying assets
 router.get("/", async (request, response) => {
@@ -123,13 +149,13 @@ const upload = multer({ storage: storage });
 // ... existing routes ...
 
 // New route for handling Excel file upload
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', upload.single('file'), async (request, res) => {
   try {
-    if (!req.file) {
+    if (!request.file) {
       return res.status(400).json({ message: 'No file uploaded' });
     }
 
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const workbook = xlsx.read(request.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     const data = xlsx.utils.sheet_to_json(sheet);
@@ -173,42 +199,66 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
    // =IF(AND(assetData.conf * assetData.avail * assetData.avail>=1, assetData.conf * assetData.avail * assetData.avail<=6), "LOW", IF(AND(assetData.conf * assetData.avail * assetData.avail>=7, assetData.conf * assetData.avail * assetData.avail<=18), "MEDIUM", IF(AND(assetData.conf * assetData.avail * assetData.avail>=19, assetData.conf * assetData.avail * assetData.avail<=27), "HIGH")))
 
-        const allVulnerabilities = await vul.find({});
         const createdAssets = [];
         for (const assetData of mappedData) {
-            const scaledValue = assetData.conf * assetData.avail * assetData.avail;
-            const riskLevel = determineRiskLevel(scaledValue);
-            const mappedVulnerabilities = allVulnerabilities.map(vulnerability => ({
-              risk_scenario: vulnerability.risk_scenario,
-              threat: vulnerability.threat,
-              vul: vulnerability.vul,
-              access: vulnerability.access,
-              actor: vulnerability.actor,
-              motive: vulnerability.motive,
-              impact: riskLevel,
-              likelihood: vulnerability.likelihood,
-              inh_risk: riskLevel * vulnerability.likelihood,
-            }));
-      
-            const newAsset = {
-              department: assetData.department,
-              info_asset: assetData.info_asset,
-              format: assetData.format,
-              asset_type: assetData.asset_type,
-              desc: assetData.desc,
-              stor_loc: assetData.stor_loc,
-              conf: assetData.conf,
-              integrity: assetData.integrity,
-              avail: assetData.avail,
-              asset_value: riskLevel,
-              classification: assetData.classification,
-              asset_with: assetData.asset_with,
-              shared_with: assetData.shared_with,
-              vulnerabilities: mappedVulnerabilities,
-            };
-      
-            const createdAsset = await asset.create(newAsset);
-            createdAssets.push(createdAsset);
+          console.log("hi");
+          const scaledValue = assetData.conf *assetData.avail *assetData.avail;
+          const riskLevel = determineRiskLevel(scaledValue);
+          const storLocFilter = assetData.stor_loc === 'cloud' ? 'Tech' : ['Tech', 'Physical'];
+  
+          const allVulnerabilities = await vul.find({ org: { $in: storLocFilter } });
+          const mappedVulnerabilities = allVulnerabilities.map(vulnerability => {
+            const _id = vulnerability._id;
+            return{
+              _id,
+              org: vulnerability.org,
+              control_num: vulnerability.control_num,
+              sec_name: vulnerability.sec_name,
+              con_type: vulnerability.con_type,
+              isp: vulnerability.isp,
+              cyb_con: vulnerability.cyb_con,
+              op_cab: vulnerability.op_cab,
+              sec_dom: vulnerability.sec_dom,
+              control: vulnerability.control,
+              purpose: vulnerability.purpose,
+              mat_level: vulnerability.mat_level,
+              mat_ob: vulnerability.mat_ob,
+              com: vulnerability.com,
+              iso_control: vulnerability.iso_control.map(control => {
+                const _id=control._id;
+                  return{
+                    _id,
+                    risk_scenario: control.risk_scenario,
+                  threat: control.threat,
+                  vul: control.vul,
+                  access: control.access,
+                  actor: control.actor,
+                  motive: control.motive,
+                  impact: riskLevel,
+                  likelihood: control.likelihood,
+                  inh_risk: riskLevel * control.likelihood,
+            }}),
+          }});
+  
+          const newAsset = {
+            department: assetData.department,
+            info_asset: assetData.info_asset,
+            format: assetData.format,
+            asset_type: assetData.asset_type,
+            desc: assetData.desc,
+            stor_loc: assetData.stor_loc,
+            conf: assetData.conf,
+            integrity: assetData.integrity,
+            avail: assetData.avail,
+            asset_value: riskLevel,
+            classification: assetData.classification,
+            asset_with: assetData.asset_with,
+            shared_with: assetData.shared_with,
+            vulnerabilities: mappedVulnerabilities,
+          };
+  
+          const create_asset = await asset.create(newAsset);
+          createdAssets.push(create_asset);
           }
           return res.status(201).json(createdAssets);
   } catch (error) {
@@ -216,5 +266,53 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     return res.status(500).json({ message: error.message });
   }
 });
+
+//edit maturity
+router.put("/:assetId/vulnerability/:vulnerabilityId/maturity", async (request, response) => {
+  try {
+    const { assetId, vulnerabilityId } = request.params;
+    const { mat_level } = request.body;
+
+    const assets = await asset.find({}); // Find all assets
+    for (const asset_new of assets) {
+      const vulnerability = asset_new.vulnerabilities.find(vul => vul._id.toString() === vulnerabilityId);
+
+      if (!vulnerability) {
+        continue; 
+      }
+
+      // Update the mat_level of the found vulnerability
+      vulnerability.mat_level = mat_level;
+
+      // Set the likelihood based on the mat_level
+      let likelihood;
+      if (mat_level >= 4 && mat_level <= 5) {
+        likelihood = 1;
+      } else if (mat_level >= 2 && mat_level <= 3) {
+        likelihood = 2;
+      } else {
+        likelihood = 3;
+      }
+
+      // Update the likelihood of the vulnerability
+      vulnerability.iso_control.forEach(control => {
+        control.likelihood = likelihood;
+        control.inh_risk = control.impact * likelihood;
+      });
+
+      await asset_new.save(); // Save the updated asset
+    }
+
+    return response.status(200).json({ message: "Maturity level and likelihood updated successfully for all assets" });
+  } catch (error) {
+    console.log(error.message);
+    response.status(500).send({ message: error.message });
+  }
+});
+
+
+
+
+
 
 export default router;
